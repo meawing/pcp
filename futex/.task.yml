@@ -1,0 +1,9 @@
+cmake_targets:
+  futex_task:
+    profiles:
+      - release
+
+submit_files:
+  - mutex.hpp
+  - condvar.hpp
+  - queue.hpp

@@ -1,0 +1,14 @@
+cmake_targets:
+  thread_pool_task:
+    profiles:
+      - release-lines
+      - asan-lines
+      - release
+      - asan
+      - tsan
+
+submit_files:
+  - queue.hpp
+  - tp.hpp
+  - tp.cpp
+  - wg.hpp

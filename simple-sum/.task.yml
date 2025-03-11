@@ -1,0 +1,7 @@
+cmake_targets:
+  simple-sum_task:
+    profiles:
+      - release
+
+submit_files:
+  - simple-sum.hpp

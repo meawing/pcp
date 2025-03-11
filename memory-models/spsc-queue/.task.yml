@@ -1,0 +1,7 @@
+cmake_targets:
+  spsq_queue_task:
+    profiles:
+      - release
+
+submit_files:
+  - queue.hpp

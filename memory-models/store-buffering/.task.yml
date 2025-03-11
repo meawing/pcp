@@ -1,0 +1,7 @@
+cmake_targets:
+  store_buffering_task:
+    profiles:
+      - release
+
+submit_files:
+  - main.cpp

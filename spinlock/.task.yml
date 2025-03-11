@@ -1,0 +1,11 @@
+cmake_targets:
+  spinlock_task:
+    profiles:
+      - release-lines
+      - asan-lines
+      - release
+      - asan
+      - tsan
+
+submit_files:
+  - spinlock.hpp

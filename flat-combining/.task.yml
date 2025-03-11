@@ -1,0 +1,9 @@
+cmake_targets:
+  flat_combining_task:
+    profiles:
+      - release
+
+submit_files:
+  - flat-combiner.h
+  - spinlock.h
+  - spinlock.cpp
