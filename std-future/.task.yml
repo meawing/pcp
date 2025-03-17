@@ -1,5 +1,6 @@
 cmake_targets:
   std_future_task:
+    timeout: 1m
     profiles:
       - release
       - tsan
@@ -11,3 +12,9 @@ submit_files:
   - future.hpp
   - promise.hpp
   - state.hpp
+
+lint_files:
+  - test.cpp
+
+lint_profiles:
+  - release

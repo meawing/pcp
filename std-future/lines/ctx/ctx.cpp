@@ -1,7 +1,5 @@
 #include <lines/ctx/ctx.hpp>
 
-#include <iostream>
-
 #if __has_feature(address_sanitizer)
 #include <sanitizer/common_interface_defs.h>
 #elif __has_feature(thread_sanitizer)

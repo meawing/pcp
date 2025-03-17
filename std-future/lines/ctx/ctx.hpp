@@ -2,6 +2,7 @@
 
 #include <lines/ctx/trampoline.hpp>
 
+#include <cstddef>
 #include <span>
 
 namespace lines {

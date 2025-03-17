@@ -1,9 +1,0 @@
-cmake_targets:
-  unbuffered_channel_task:
-    profiles:
-      - release
-      - asan
-      - tsan
-
-submit_files:
-  - channel.h

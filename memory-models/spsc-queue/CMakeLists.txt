@@ -1,1 +1,0 @@
-add_catch(spsq_queue test.cpp)

@@ -6,7 +6,7 @@
 #include <lines/ctx/trampoline.hpp>
 #include <lines/sync/awaitable.hpp>
 
-#include <contrib/function2/function2.hpp>
+#include <function2/function2.hpp>
 
 #include <thread>
 
