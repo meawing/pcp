@@ -1,17 +1,13 @@
 cmake_targets:
-  std_future_task:
+  buffered_channel_task:
     timeout: 1m
     profiles:
       - release
-      - tsan
-      - release-lines
-      - asan-lines
       - asan
+      - tsan
 
 submit_files:
-  - future.hpp
-  - promise.hpp
-  - state.hpp
+  - channel.h
 
 lint_files:
   - test.cpp

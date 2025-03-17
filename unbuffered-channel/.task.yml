@@ -1,0 +1,16 @@
+cmake_targets:
+  unbuffered_channel_task:
+    timeout: 1m
+    profiles:
+      - release
+      - asan
+      - tsan
+
+submit_files:
+  - channel.h
+
+lint_files:
+  - test.cpp
+
+lint_profiles:
+  - release
