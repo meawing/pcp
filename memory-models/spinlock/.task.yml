@@ -1,0 +1,7 @@
+cmake_targets:
+  mm_spinlock_task:
+    profiles:
+      - release
+
+submit_files:
+  - spinlock.hpp

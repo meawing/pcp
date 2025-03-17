@@ -1,0 +1,27 @@
+cmake_targets:
+  future_base_task:
+    profiles:
+      - release
+      - asan
+      - tsan
+      - release-lines
+      - asan-lines
+
+  future_chaining_task:
+    profiles:
+      - release
+      - asan
+      - tsan
+      - release-lines
+      - asan-lines
+
+submit_files:
+  - ../future.hpp
+  - ../future.ipp
+  - ../future.cpp
+  - ../promise.hpp
+  - ../promise.ipp
+  - ../promise.cpp
+  - ../state.hpp
+  - ../state.ipp
+  - ../meta.hpp
