@@ -1,9 +1,0 @@
-cmake_targets:
-  coroutine_task:
-    profiles:
-      - release-lines
-      - asan-lines
-
-submit_files:
-  - coroutine.hpp
-  - coroutine.cpp
