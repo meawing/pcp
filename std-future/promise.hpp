@@ -12,23 +12,23 @@ class Future;
 template <class T>
 class Promise {
 public:
-    Promise() : state_(std::make_shared<detail::SharedState<T>>()) {}
+    Promise() = default;
     Promise(const Promise&) = delete;
     Promise(Promise&& other) = default;
 
     void SetValue(T value) && {
-        state_->SetValue(std::move(value));
+        // TODO: Your solution
     }
 
     void SetError(Error error) && {
-        state_->SetError(std::move(error));
+        // TODO: Your solution
     }
 
 private:
     friend class Future<T>;
 
-    // Shared state
-    std::shared_ptr<detail::SharedState<T>> state_;
+    // Shared state...
+    // TODO: Your solution
 };
 
 }  // namespace future

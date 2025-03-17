@@ -11,19 +11,19 @@ template <class T>
 class Future {
 public:
     Future(Promise<T>& promise) {
-        state_ = promise.state_;
+        // TODO: Your solution
     }
 
     Future(const Future&) = delete;
     Future(Future&&) = default;
 
     T Get() && {
-        return state_->Get();
+        // TODO: Your solution
     }
 
 private:
-    // Shared state
-    std::shared_ptr<detail::SharedState<T>> state_;
+    // Shared state...
+    // TODO: Your solution
 };
 
 template <class T>

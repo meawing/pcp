@@ -19,46 +19,27 @@ template <class T>
 class SharedState {
 private:
     struct Container {
-        std::mutex mutex;
-        lines::Condvar condvar;
-        std::optional<std::variant<T, Error>> result;
+        // TODO: Your solution
     };
 
 public:
-    SharedState() : container_(std::make_shared<Container>()) {}
+    SharedState() = default;
 
     void SetValue(T value) {
-        std::lock_guard<std::mutex> lock(container_->mutex);
-        if (!container_->result.has_value()) {
-            container_->result = std::move(value);
-            container_->condvar.NotifyAll();
-        }
+        // TODO: Your solution
     }
 
     void SetError(Error error) {
-        std::lock_guard<std::mutex> lock(container_->mutex);
-        if (!container_->result.has_value()) {
-            container_->result = std::move(error);
-            container_->condvar.NotifyAll();
-        }
+        // TODO: Your solution
     }
 
     T Get() {
-        std::unique_lock<std::mutex> lock(container_->mutex);
-        while (!container_->result.has_value()) {
-            container_->condvar.Wait(lock);
-        }
-        
-        auto& result = container_->result.value();
-        if (std::holds_alternative<Error>(result)) {
-            std::rethrow_exception(std::get<Error>(result));
-        }
-        
-        return std::get<T>(result);
+        // TODO: Your solution
     }
 
 private:
-    std::shared_ptr<Container> container_;
+    // Some container for value or error
+    // TODO: Your solution
 };
 
 }  // namespace detail
