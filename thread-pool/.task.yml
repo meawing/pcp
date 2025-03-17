@@ -1,16 +1,22 @@
 cmake_targets:
-  buffered_channel_task:
-    timeout: 1m
+  thread_pool_task:
+    timeout: 3m
     profiles:
+      - release-lines
+      - asan-lines
       - release
       - asan
       - tsan
 
 submit_files:
-  - channel.h
+  - queue.hpp
+  - tp.hpp
+  - tp.cpp
+  - wg.hpp
 
 lint_files:
   - test.cpp
+  - tp.cpp
 
 lint_profiles:
   - release

@@ -1,21 +1,20 @@
 #pragma once
 
-#include <optional>
+#include <lines/std/condvar.hpp>
+#include <lines/std/mutex.hpp>
 #include <mutex>
-#include <condition_variable>
 
-template <class T>
-class UnbufferedChannel {
+class WaitGroup {
 public:
-    void Push(T value) {
+    void Add(size_t count) {
         // TODO: Your solution
     }
 
-    std::optional<T> Pop() {
+    void Done() {
         // TODO: Your solution
     }
 
-    void Close() {
+    void Wait() {
         // TODO: Your solution
     }
 
