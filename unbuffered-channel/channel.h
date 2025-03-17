@@ -1,18 +1,13 @@
 #pragma once
 
 #include <optional>
-#include <queue>
 #include <mutex>
 #include <condition_variable>
 
-// TODO: Your solution
-
 template <class T>
-class BufferedChannel {
+class UnbufferedChannel {
 public:
-    // TODO: Your solution
-
-    void Push(T elem) {
+    void Push(T value) {
         // TODO: Your solution
     }
 

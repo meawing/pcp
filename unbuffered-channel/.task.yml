@@ -1,5 +1,5 @@
 cmake_targets:
-  buffered_channel_task:
+  unbuffered_channel_task:
     profiles:
       - release
       - asan
