@@ -1,17 +1,22 @@
 cmake_targets:
-  coroutine_task:
-    timeout: 30s
+  thread_pool_task:
+    timeout: 3m
     profiles:
       - release-lines
       - asan-lines
+      - release
+      - asan
+      - tsan
 
 submit_files:
-  - coroutine.hpp
-  - coroutine.cpp
+  - queue.hpp
+  - tp.hpp
+  - tp.cpp
+  - wg.hpp
 
 lint_files:
   - test.cpp
-  - coroutine.cpp
+  - tp.cpp
 
 lint_profiles:
   - release

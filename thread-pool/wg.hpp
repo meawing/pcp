@@ -2,6 +2,7 @@
 
 #include <lines/std/condvar.hpp>
 #include <lines/std/mutex.hpp>
+#include <mutex>
 
 class WaitGroup {
 public:
