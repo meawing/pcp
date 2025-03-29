@@ -98,6 +98,4 @@ private:
 
 }  // namespace future
 
-#define PROMISE_IMPL
-#include "promise.ipp"
-#undef PROMISE_IMPL
+

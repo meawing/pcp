@@ -206,6 +206,4 @@ template <class T>
 
 }  // namespace future
 
-#define FUTURE_IMPL
-#include "future.ipp"
-#undef FUTURE_IMPL
+

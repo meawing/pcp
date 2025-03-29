@@ -54,6 +54,3 @@ private:
 }  // namespace detail
 }  // namespace future
 
-#define PROMISE_IMPL
-#include "state.ipp"
-#undef PROMISE_IMPL
