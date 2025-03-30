@@ -6,7 +6,6 @@
 #include "promise.hpp"
 #include "state.hpp"
 #include "meta.hpp"
-#include "lines/fibers/api.hpp"
 
 namespace future {
 
@@ -39,172 +38,170 @@ public:
 template <class T>
 class Promise;
 
-// future.hpp implementation
 template <class T>
 class Future {
 public:
     using ValueType = T;
 
-    Future() : state_(nullptr) {}
+public:
+    Future() = default;
 
     // Not copyable.
     Future(const Future&) = delete;
     Future& operator=(const Future&) = delete;
 
     // Movable.
-    Future(Future&& other) noexcept : state_(other.state_) {
-        other.state_ = nullptr;
-    }
-    Future& operator=(Future&& other) noexcept {
-        if (this != &other) {
-            Cleanup();
-            state_ = other.state_;
-            other.state_ = nullptr;
-        }
-        return *this;
-    }
+    Future(Future&& other) noexcept;
+    Future& operator=(Future&&) noexcept;
 
-    ~Future() {
-        Cleanup();
-    }
+    ~Future();
 
     ////////////////////////////////////////////////////////////////////////////
-    // GetResult
-    ////////////////////////////////////////////////////////////////////////////
 
-    // lvalue overload: returns a reference to the result stored in the shared state.
-    Result<T>& GetResult() & {
-        if (!IsValid())
-            throw FutureInvalid();
-        if (!state_->HasResult())
-            throw FutureNotReady();
-        return state_->GetResult();
-    }
+    /// Returns a reference to the result if it is ready.
+    ///
+    /// Does not `Wait()`.
+    ///
+    /// Preconditions:
+    /// - `IsValid() == true` (else throws FutureInvalid)
+    /// - `IsReady() == true` (else throws FutureNotReady)
+    ///
+    /// Postconditions:
+    /// - This call does not mutate the value of the future. However, the calling code may mutate
+    ///   that value, including moving it out by move-constructing or move-assigning another value
+    ///   from it, for example, via the & or && overloads or through casts.
+    template <class Self>
+    auto&& GetResult(this Self&& self);
 
-    // const lvalue overload
-    const Result<T>& GetResult() const & {
-        if (!IsValid())
-            throw FutureInvalid();
-        if (!state_->HasResult())
-            throw FutureNotReady();
-        return state_->GetResult();
-    }
-
-    // rvalue overload: moves out the stored Result and clears it from the shared state.
-    Result<T> GetResult() && {
-        if (!IsValid())
-            throw FutureInvalid();
-        if (!state_->HasResult())
-            throw FutureNotReady();
-        return state_->MoveResult();
-    }
-
-    ////////////////////////////////////////////////////////////////////////////
-    // GetValue
-    ////////////////////////////////////////////////////////////////////////////
-
-    // lvalue: returns the value by reference; if the state holds an error, rethrows.
-    T& GetValue() & {
-        auto& res = GetResult();
-        if (!res)
-            std::rethrow_exception(res.error());
-        return *res;
-    }
-
-    const T& GetValue() const & {
-        auto& res = GetResult();
-        if (!res)
-            std::rethrow_exception(res.error());
-        return *res;
-    }
-
-    // rvalue: moves out the value by utilizing the rvalue GetResult().
-    T GetValue() && {
-        auto res = std::move(*this).GetResult();  // calls our MoveResult version
-        if (!res)
-            std::rethrow_exception(res.error());
-        return std::move(*res);
-    }
+    /// Returns a reference to the result value if it is ready.
+    ///
+    /// Does not `Wait()`.
+    ///
+    /// Preconditions:
+    /// - `IsValid() == true` (else throws FutureInvalid)
+    /// - `IsReady() == true` (else throws FutureNotReady)
+    ///
+    /// Postconditions:
+    /// - If an exception has been captured (i.e., if `HasException() == true`), throws that
+    ///   exception.
+    /// - This call does not mutate the value of the future. However, the calling code may mutate
+    ///   that value, including moving it out by move-constructing or move-assigning another value
+    ///   from it, for example, via the & or && overloads or through casts.
+    template <class Self>
+    auto&& GetValue(this Self&& self);
 
     ////////////////////////////////////////////////////////////////////////////
-    // Wait
-    ////////////////////////////////////////////////////////////////////////////
 
-    Future<T>& Wait() & {
-        if (!IsValid())
-            throw FutureInvalid();
-        state_->Wait();
-        return *this;
-    }
-    Future<T>&& Wait() && {
-        if (!IsValid())
-            throw FutureInvalid();
-        state_->Wait();
-        return std::move(*this);
-    }
+    /// Blocks until this Future is complete.
+    ///
+    /// Preconditions:
+    /// - `IsValid() == true` (else throws FutureInvalid)
+    ///
+    /// Postconditions:
+    /// - `IsValid() == true` (but the calling code can trivially move-out `*this` by assigning or
+    ///   constructing the result into a distinct object).
+    /// - `&RESULT == this`
+    /// - `IsReady() == true`
+    Future<T>& Wait() &;
+    Future<T>&& Wait() &&;
 
     ////////////////////////////////////////////////////////////////////////////
-    // Status
-    ////////////////////////////////////////////////////////////////////////////
 
-    bool IsValid() const noexcept {
-        return state_ != nullptr;
-    }
+    /// - True if this has a shared state;
+    /// - False if this has been moved-out.
+    bool IsValid() const noexcept;
 
-    bool IsReady() const {
-        if (!IsValid())
-            throw FutureInvalid();
-        return state_->HasResult();
-    }
+    /// True when the result (or exception) is ready.
+    ///
+    /// Preconditions:
+    /// - `IsValid() == true` (else throws FutureInvalid)
+    bool IsReady() const;
 
-    bool HasException() const {
-        if (!IsValid())
-            throw FutureInvalid();
-        if (!state_->HasResult())
-            throw FutureNotReady();
-        return !state_->GetResult();
-    }
+    /// True if the result of a Future is an exception (not a value) and IsReady() returns true.
+    ///
+    /// Preconditions:
+    /// - `IsValid() == true` (else throws FutureInvalid)
+    /// - `IsReady() == true` (else throws FutureNotReady)
+    bool HasException() const;
 
     ////////////////////////////////////////////////////////////////////////////
-    // Subscribe
+
+    /// Once this Future has completed, execute func, a function that takes T&& and returns either a
+    /// V or a Future<V>.
+    ///
+    /// Example:
+    ///   Future<string> f2 = f1.ThenValue([](auto&& v) {
+    ///     ...
+    ///     return string("foo");
+    ///   });
+    ///
+    /// Preconditions:
+    /// - `IsValid() == true` (else throws FutureInvalid)
+    ///
+    /// Postconditions:
+    /// - `IsValid() == false`
+    /// - `RESULT.IsValid() == true`
+    template <detail::ThenSync<T> F>
+    Future<std::invoke_result_t<F, T>> ThenValue(F&& func) &&;
+
+    template <detail::ThenAsync<T> F>
+    Future<typename std::invoke_result_t<F, T>::ValueType> ThenValue(F&& func) &&;
+
+    /// Set an error continuation for this Future such that the continuation is invoked with an
+    /// exception type and returns either a T or a Future<T>.
+    ///
+    /// Example:
+    ///   Future<string> f2 = f1.ThenValue([] {
+    ///       throw std::runtime_error("oh no!");
+    ///       return "42";
+    ///     })
+    ///     .ThenError([] (std::exception& e) -> std::string {
+    ///       return e.what();
+    ///     });
+    ///
+    /// Preconditions:
+    /// - `IsValid() == true` (else throws FutureInvalid)
+    ///
+    /// Postconditions:
+    /// - `IsValid() == false`
+    /// - `RESULT.IsValid() == true`
+    template <detail::ThenSync<std::exception_ptr> F>
+    Future<T> ThenError(F&& func) &&;
+
+    template <detail::ThenAsync<std::exception_ptr> F>
+    Future<T> ThenError(F&& func) &&;
+
     ////////////////////////////////////////////////////////////////////////////
 
+    /// When this Future has completed, execute func, a function that takes Result<T>&& and returns
+    /// void. The func callback must not throw any exceptions. This method is designed for internal
+    /// use and should not be utilized directly by users. Instead, users are encouraged to employ
+    /// futures chaining and combinators for handling Future objects.
+    ///
+    /// Preconditions:
+    /// - `IsValid() == true` (else throws FutureInvalid)
+    ///
+    /// Postconditions:
+    /// - `IsValid() == false`
     template <detail::SubscribeCallback<Result<T>> F>
-    void Subscribe(F&& callback) && {
-        if (!IsValid())
-            throw FutureInvalid();
-        state_->SetCallback(fu2::unique_function<void(Result<T>&&) noexcept>(std::forward<F>(callback)));
-        state_->Detach();
-        state_ = nullptr;
-    }
+    void Subscribe(F&& callback) &&;
 
 private:
     template <class Q>
     friend std::pair<Future<Q>, Promise<Q>> GetTied();
 
-    void Cleanup() {
-        if (state_) {
-            state_->Detach();
-            state_ = nullptr;
-        }
-    }
+    template <class U>
+    friend class Future;
+
+    // TODO: Your solution
 
 private:
-    detail::SharedState<T>* state_;
+    // TODO: Your solution
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 template <class T>
-[[nodiscard]] std::pair<Future<T>, Promise<T>> GetTied() {
-    auto* state = new detail::SharedState<T>();
-    Future<T> f;
-    Promise<T> p;
-    f.state_ = state;
-    p.state_ = state;
-    return {std::move(f), std::move(p)};
-}
-
-
+[[nodiscard]] std::pair<Future<T>, Promise<T>> GetTied();
 
 }  // namespace future
