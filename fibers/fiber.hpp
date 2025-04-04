@@ -1,21 +1,31 @@
 #pragma once
 
 #include <libassert/assert.hpp>
+#include <lines/util/thread_local.hpp>
 
 #include "coro/coroutine.hpp"
 #include "tp/tp.hpp"
+
 
 class Fiber {
 public:
     // TODO: Your solution
 
-    void Resume();
-    void Suspend();
+    void Resume() {
+        // TODO: Your solution
+    }
+    void Suspend() {
+        // TODO: Your solution
+    }
 
-    static Fiber* This();
+    static Fiber* This() {
+        // TODO: Your solution
+    }
 
 private:
-    void Schedule();
+    void Schedule() {
+        // TODO: Your solution
+    }
 
 private:
     // TODO: Your solution
@@ -33,6 +43,8 @@ void Spawn(F&& f) {
     // TODO: Your solution
 }
 
-void Yield();
+void Yield() {
+    // TODO: Your solution
+}
 
 }  // namespace api
