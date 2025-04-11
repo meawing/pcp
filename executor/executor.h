@@ -40,7 +40,7 @@ public:
     bool IsCanceled();
     bool IsFinished();
     std::exception_ptr GetError();
-    void Cancel();
+    virtual void Cancel();
     void Wait();
 
     // --- Methods used internally by the executor
@@ -176,7 +176,17 @@ public:
             this->AddDependency(f);
         }
     }
-
+    
+    // NEW OVERRIDE: When canceled, also cancel all children.
+    void Cancel() override {
+        // Call base cancellation.
+        Future<std::vector<T>>::Cancel();
+        // Propagate cancellation to each sub-future.
+        for (auto &f : futures_) {
+            f->Cancel();
+        }
+    }
+    
     virtual void Run() override {
         std::vector<T> results;
         // Collect results from the fired futures.
