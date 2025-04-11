@@ -73,10 +73,11 @@ private:
 
     // Mark the task finished (used when canceled before executing)
     void MarkFinished();
-
+    
     mutable std::mutex mutex_;
     std::condition_variable cv_;
-    State state_ { State::Pending };
+    std::atomic<State> state_{ State::Pending };
+    // error_ is still protected by mutex_, so we leave it as-is.
     std::exception_ptr error_ { nullptr };
 
     // dependencies and triggers are stored as weak pointers to avoid cycles.
@@ -247,16 +248,17 @@ private:
 template <class T>
 class WhenAllBeforeDeadlineFuture : public Future<std::vector<T>> {
 public:
-    WhenAllBeforeDeadlineFuture(std::vector<FuturePtr<T>> futures, std::chrono::system_clock::time_point deadline)
+    WhenAllBeforeDeadlineFuture(std::vector<FuturePtr<T>> futures,
+                                  std::chrono::system_clock::time_point deadline)
         : Future<std::vector<T>>([&](){ return std::vector<T>{}; }),
           futures_(std::move(futures)),
           deadline_(deadline)
     {
-        // The task should become ready either when one of its input futures finishes
+        // The task should become ready either when all of its input futures finish
         // or when the deadline is reached.
         this->SetTimeTrigger(deadline_);
         for (auto& f : futures_) {
-            this->AddTrigger(f);
+            this->AddDependency(f);
         }
     }
 
@@ -272,6 +274,7 @@ public:
         }
         this->result_ = results;
     }
+    
 private:
     std::vector<FuturePtr<T>> futures_;
     std::chrono::system_clock::time_point deadline_;

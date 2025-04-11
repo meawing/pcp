@@ -25,25 +25,22 @@ void Task::SetTimeTrigger(std::chrono::system_clock::time_point at) {
 }
 
 bool Task::IsCompleted() {
-    std::lock_guard<std::mutex> lk(mutex_);
-    return state_ == State::Completed;
+    return state_.load(std::memory_order_acquire) == State::Completed;
 }
 
 bool Task::IsFailed() {
-    std::lock_guard<std::mutex> lk(mutex_);
-    return state_ == State::Failed;
+    return state_.load(std::memory_order_acquire) == State::Failed;
 }
 
 bool Task::IsCanceled() {
-    std::lock_guard<std::mutex> lk(mutex_);
-    return state_ == State::Canceled;
+    return state_.load(std::memory_order_acquire) == State::Canceled;
 }
 
 bool Task::IsFinished() {
-    std::lock_guard<std::mutex> lk(mutex_);
-    return (state_ == State::Completed ||
-            state_ == State::Failed ||
-            state_ == State::Canceled);
+    auto s = state_.load(std::memory_order_acquire);
+    return (s == State::Completed ||
+            s == State::Failed ||
+            s == State::Canceled);
 }
 
 std::exception_ptr Task::GetError() {
@@ -53,8 +50,8 @@ std::exception_ptr Task::GetError() {
 
 void Task::Cancel() {
     std::lock_guard<std::mutex> lk(mutex_);
-    if (state_ == State::Pending) {
-        state_ = State::Canceled;
+    if (state_.load(std::memory_order_acquire) == State::Pending) {
+        state_.store(State::Canceled, std::memory_order_release);
         cv_.notify_all();
     }
 }
@@ -67,53 +64,59 @@ void Task::Wait() {
 }
 
 bool Task::IsReady() {
-    std::lock_guard<std::mutex> lk(mutex_);
-    // If already not pending, then it’s “ready” in the sense that it needs no execution.
-    if (state_ != State::Pending) return true;
-    auto now = std::chrono::system_clock::now();
+    std::vector<std::weak_ptr<Task>> local_dependencies;
+    std::vector<std::weak_ptr<Task>> local_triggers;
+    bool has_time = false;
+    std::chrono::system_clock::time_point time_trigger;
+    {
+        std::lock_guard<std::mutex> lk(mutex_);
+        // the task is ready if it is not pending (or running) anyway.
+        if (state_.load(std::memory_order_acquire) != State::Pending)
+            return true;
+        has_time = has_time_trigger_;
+        time_trigger = time_trigger_;
+        local_dependencies = dependencies_;
+        local_triggers = triggers_;
+    }
 
-    // Check time trigger. (If no time trigger was set, time_ok remains false.)
-    bool time_ok = has_time_trigger_ && (now >= time_trigger_);
+    auto now = std::chrono::system_clock::now();
+    bool time_ok = has_time && (now >= time_trigger);
 
     // Check triggers: if at least one trigger is finished.
     bool trigger_ok = false;
-    if (!triggers_.empty()) {
-        for (auto& w : triggers_) {
-            if (auto t = w.lock()) {
-                if (t->IsFinished()) { 
-                    trigger_ok = true;
-                    break;
-                }
+    for (auto& w : local_triggers) {
+        if (auto t = w.lock()) {
+            if (t->IsFinished()) {
+                trigger_ok = true;
+                break;
             }
         }
     }
 
-    // Check dependencies: if there are any, then all must be finished.
+    // Check dependencies: if there are any, then ALL must be finished.
     bool dep_ok = false;
-    if (!dependencies_.empty()) {
+    if (!local_dependencies.empty()) {
         dep_ok = true;
-        for (auto& w : dependencies_) {
+        for (auto& w : local_dependencies) {
             if (auto dep = w.lock()) {
-                if (!dep->IsFinished()) { 
+                if (!dep->IsFinished()) {
                     dep_ok = false;
                     break;
                 }
             }
-            // if dependency pointer expired then we assume it’s finished.
+            // If the dependency pointer expired, assume it is finished.
         }
     }
 
-    // If any conditions were added, then the task becomes ready
-    // when ANY one of them is fulfilled.
-    if (!dependencies_.empty() || !triggers_.empty() || has_time_trigger_) {
+    // If any conditions were added, then the task becomes ready only if at least one condition is met.
+    if (!local_dependencies.empty() || !local_triggers.empty() || has_time) {
         return dep_ok || trigger_ok || time_ok;
     }
-    // Otherwise, if no dependencies, triggers, or time condition, then it is ready immediately.
     return true;
 }
 
 void Task::RunTask() {
-    {   // set Running state
+    {
         std::lock_guard<std::mutex> lk(mutex_);
         if (state_ != State::Pending)
             return; // if already canceled, do nothing
@@ -217,7 +220,7 @@ void Executor::WorkerLoop() {
             auto now = std::chrono::system_clock::now();
             for (auto it = pending_.begin(); it != pending_.end(); ) {
                 if ((*it)->IsCanceled() || (*it)->IsReady()) {
-                    ready_.push_back(*it);
+                    ready_.push_front(*it);  // <<== Push ready tasks at the front.
                     it = pending_.erase(it);
                 } else {
                     ++it;
