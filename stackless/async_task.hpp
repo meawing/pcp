@@ -2,6 +2,8 @@
 
 #include <coroutine>
 #include <future>
+#include <utility>
+#include <variant>
 
 namespace coro {
 
