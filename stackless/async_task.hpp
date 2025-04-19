@@ -4,6 +4,7 @@
 #include <future>
 #include <utility>
 #include <variant>
+#include <optional>
 
 namespace coro {
 
@@ -34,7 +35,34 @@ class AsyncTaskAwaiter;
 template <class T>
 class AsyncTaskPromise;
 
-class FinalSuspendAwaitable;
+// Forward declare FinalSuspendAwaitable with complete definition
+class FinalSuspendAwaitable {
+public:
+    explicit FinalSuspendAwaitable(std::coroutine_handle<> continuation) noexcept
+        : continuation_(continuation) {
+    }
+    
+    bool await_ready() noexcept {
+        return false;
+    }
+    
+    std::coroutine_handle<> await_suspend(std::coroutine_handle<>) noexcept {
+        // If we have a continuation, transfer control to it
+        if (continuation_) {
+            return continuation_;
+        }
+        
+        // Otherwise, return noop_coroutine which effectively destroys the coroutine
+        return std::noop_coroutine();
+    }
+    
+    void await_resume() noexcept {
+        std::unreachable();  // This should never be called
+    }
+
+private:
+    std::coroutine_handle<> continuation_;
+};
 
 }  // namespace detail
 
@@ -60,11 +88,24 @@ public:
     AsyncTask& operator=(const AsyncTask&) = delete;
 
     /// Movable.
-    AsyncTask(AsyncTask<T>&& other) noexcept;
-    AsyncTask& operator=(AsyncTask<T>&& other) noexcept;
+    AsyncTask(AsyncTask<T>&& other) noexcept
+        : handle_(std::exchange(other.handle_, {})) {
+    }
+    
+    AsyncTask& operator=(AsyncTask<T>&& other) noexcept {
+        if (this != &other) {
+            if (handle_) {
+                handle_.destroy();
+            }
+            handle_ = std::exchange(other.handle_, {});
+        }
+        return *this;
+    }
 
     /// Checks whether this task holds coroutine.
-    bool IsValid() const noexcept;
+    bool IsValid() const noexcept {
+        return handle_ != nullptr;
+    }
 
     /// Starts the coroutine, invalidates the current task and returns
     /// the future that is set when the coroutine is completed.
@@ -74,7 +115,19 @@ public:
     ///
     /// Postconditions:
     /// - `IsValid() == false`
-    std::future<T> Run() &&;
+    std::future<T> Run() && {
+        if (!IsValid()) {
+            throw AsyncTaskInvalid();
+        }
+        
+        auto future = handle_.promise().GetFuture();
+        
+        // Resume the coroutine
+        auto h = std::exchange(handle_, {});
+        h.resume();
+        
+        return future;
+    }
 
     /// This method allows awaiting the current task.
     ///
@@ -83,19 +136,32 @@ public:
     ///
     /// Postconditions:
     /// - `IsValid() == false`
-    detail::AsyncTaskAwaiter<T> operator co_await() &&;
+    detail::AsyncTaskAwaiter<T> operator co_await() && {
+        if (!IsValid()) {
+            throw AsyncTaskInvalid();
+        }
+        
+        return detail::AsyncTaskAwaiter<T>(std::exchange(handle_, {}));
+    }
 
     // If the coroutine is not started, it should be destroyed.
-    ~AsyncTask() noexcept;
+    ~AsyncTask() noexcept {
+        if (handle_) {
+            handle_.destroy();
+        }
+    }
 
 private:
     // Users should not be able to call this constructor explicitly,
     // it is the details of implementation.
-    AsyncTask(std::coroutine_handle<detail::AsyncTaskPromise<T>> handle) noexcept;
+    AsyncTask(std::coroutine_handle<detail::AsyncTaskPromise<T>> handle) noexcept
+        : handle_(handle) {
+    }
 
-    // You may need to declare friend classes here.
-
-    // TODO: Your solution
+    // Friend declarations
+    friend detail::AsyncTaskPromise<T>;
+    
+    std::coroutine_handle<detail::AsyncTaskPromise<T>> handle_{};
 };
 
 ////////////////////////////////////////////////////////////////////////////////
@@ -103,84 +169,145 @@ private:
 namespace detail {
 
 /// Promise type for AsyncTask coroutines.
-///
-/// When a corotuine (function that has key-words co_await or co_return) returns
-/// AsyncTask, compiler gets the AsyncTask::promise_type and creates coroutine
-/// as well as promise on the heap. So the lifetime of promise is bounded to the
-/// lifetime of the coroutine.
 template <class T>
 class AsyncTaskPromise {
 public:
-    // Define the following methods:
-    //
-    //  - get_return_object() - Called after the coroutine and promise is
-    //    created to obtain the return object
-    //
-    //  - initial_suspend() - Defines the behaviour of just started coroutine.
-    //    As we implement lazily-started coroutines, we need to supsend
-    //    the coroutine just after it is created.
-    //
-    //  - return_value(...) - Called when `co_return expr` is called. You may
-    //    store the result inside this method.
-    //
-    //  - unhandled_exception() - This method is called if the coroutine ends
-    //    with an uncaught exception.
-    //
-    //  - final_suspend() - Defines the behaviour of coroutine that has just
-    //    finished it's execution
-    //
-    // Do not forget about `noexcept` specifier!
-
-    // TODO: Your solution
+    AsyncTaskPromise() noexcept = default;
+    
+    // Called after the coroutine and promise is created to obtain the return object
+    AsyncTask<T> get_return_object() noexcept {
+        return AsyncTask<T>(std::coroutine_handle<AsyncTaskPromise<T>>::from_promise(*this));
+    }
+    
+    // Defines the behavior of just started coroutine
+    // Suspend immediately as we implement lazy-started coroutines
+    std::suspend_always initial_suspend() noexcept {
+        return {};
+    }
+    
+    // Called when `co_return expr` is called
+    void return_value(T value) noexcept {
+        result_.emplace(std::move(value));
+        if (promise_) {
+            promise_->set_value(std::move(*result_));
+            result_.reset();
+        }
+    }
+    
+    // Called if the coroutine ends with an uncaught exception
+    void unhandled_exception() noexcept {
+        exception_ = std::current_exception();
+        if (promise_) {
+            promise_->set_exception(exception_);
+        }
+    }
+    
+    // Defines the behavior of coroutine that has just finished its execution
+    FinalSuspendAwaitable final_suspend() noexcept {
+        return FinalSuspendAwaitable(continuation_);
+    }
+    
+    // Get future for the result
+    std::future<T> GetFuture() {
+        promise_ = std::promise<T>();
+        return promise_->get_future();
+    }
+    
+    // Set continuation for symmetric transfer
+    void SetContinuation(std::coroutine_handle<> continuation) noexcept {
+        continuation_ = continuation;
+    }
+    
+    // Complete the promise with the result or exception (used for co_await)
+    void Complete() noexcept {
+        // If we already completed the promise in return_value or unhandled_exception,
+        // there's nothing more to do
+    }
+    
+    // Check if we have a result
+    bool HasResult() const noexcept {
+        return result_.has_value();
+    }
+    
+    // Get the result (caller must ensure HasResult() is true)
+    T GetResult() {
+        if (!result_) {
+            throw std::runtime_error("No result available in coroutine");
+        }
+        T temp_result = std::move(*result_);
+        result_.reset();  // Clear the optional to release any resources
+        return temp_result;
+    }
+    
+    // Get the exception (if any)
+    std::exception_ptr GetException() const noexcept {
+        return exception_;
+    }
 
 private:
-    // It is a good place to store the coroutine result, as well as other
-    // objects that should be bound to the lifetime of the coroutine
-    // (e.g. executor, cancellation token, continuation, etc.)
-    // Also, you may need to declare friend classes here.
-    //
-    // Try not to wrap std::coroutine_handle into std::function here to safe
-    // overhead costs and make the code more readable.
-
-    // TODO: Your solution
-};
-
-////////////////////////////////////////////////////////////////////////////////
-
-/// This awaitable is used to define the behaviour of the coroutine that has
-/// finished it's execution. You may find this custimization point useful to
-/// shedule the execution of the continuation.
-class FinalSuspendAwaitable {
-public:
-    // Define the following methods:
-    //  - bool await_ready() noexcept
-    //  - ... await_suspend(...) noexcept
-    //  - void await_resume() noexcept
-    //
-    // Do not forget about `noexcept` specifier!
-    // If you implemented everything correctly, await_resume should never be
-    // called. You may use `UNREACHABLE()` to abort execution in that method.
-
-    // TODO: Your solution
+    std::optional<T> result_{};  // Use optional to avoid default construction
+    std::exception_ptr exception_{};
+    std::optional<std::promise<T>> promise_{};
+    std::coroutine_handle<> continuation_{};
+    
+    // Friend declarations
+    friend AsyncTaskAwaiter<T>;
 };
 
 ////////////////////////////////////////////////////////////////////////////////
 
 /// This awaiter is used to await the completion of the AsyncTask.
-/// You may use this awaiter to:
-///  1. Set the continuation.
-///  2. Start the coroutine.
-/// Note that if you implemented everything correctly, you will not need any
-/// synchronization primitives, because the task is lazily-started.
 template <class T>
 class AsyncTaskAwaiter {
 public:
-    // Define the following methods:
-    //  - bool await_ready()
-    //  - ... await_suspend(...)
-    //  - void await_resume()
+    explicit AsyncTaskAwaiter(std::coroutine_handle<AsyncTaskPromise<T>> handle) noexcept
+        : handle_(handle) {
+    }
+    
+    bool await_ready() noexcept {
+        return false;  // Always suspend to set up continuation
+    }
+    
+    std::coroutine_handle<> await_suspend(std::coroutine_handle<> continuation) noexcept {
+        // Set continuation for symmetric transfer
+        handle_.promise().SetContinuation(continuation);
+        
+        // Start the awaited coroutine
+        return handle_;
+    }
+    
+    T await_resume() {
+        try {
+            // Check for exceptions
+            if (auto exception = handle_.promise().GetException()) {
+                std::rethrow_exception(exception);
+            }
+            
+            // Get the result
+            if (handle_.promise().HasResult()) {
+                return handle_.promise().GetResult();
+            }
+            
+            throw std::runtime_error("No result available in coroutine");
+        } catch (...) {
+            // Make sure we don't leak the coroutine frame
+            handle_.destroy();
+            handle_ = nullptr;
+            throw;  // Rethrow the exception
+        }
+        
+        // This point should never be reached due to exceptions or returns above
+        std::unreachable();
+    }
 
-    // TODO: Your solution
+    ~AsyncTaskAwaiter() {
+        if (handle_) {
+            handle_.destroy();
+        }
+    }
+
+private:
+    std::coroutine_handle<AsyncTaskPromise<T>> handle_{};
 };
 
 ////////////////////////////////////////////////////////////////////////////////
